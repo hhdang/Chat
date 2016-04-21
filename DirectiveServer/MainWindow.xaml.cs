@@ -46,6 +46,14 @@ namespace DirectiveServer
         {
             InitializeComponent();
             txtPort.Text = port.ToString();
+            this.Closed += MainWindow_Closed;
+        }
+
+        private void MainWindow_Closed(object sender, EventArgs e)
+        {
+            server?.Shutdown(SocketShutdown.Both);
+            server?.Dispose();
+            isStart = false;
         }
 
         private void Send(Socket socket, byte[] bytes)
@@ -198,6 +206,7 @@ namespace DirectiveServer
         {
             var tb = new TextBlock { Text = msg, Foreground = color };
             spMsg.Items.Add(tb);
+            spMsg.ScrollIntoView(spMsg.Items[spMsg.Items.Count - 1]);
         }
 
         private void Button_Click(object sender, RoutedEventArgs e)

@@ -19,7 +19,7 @@
                       Margin="0,112,0,0"
                       VerticalAlignment="Top" 
                       Width="477">
-            <ListView x:Name="spMsg" Margin="-1,1,1,-1">
+            <ListView x:Name="spMsg">
             </ListView>
         </Border>
     </Grid>
