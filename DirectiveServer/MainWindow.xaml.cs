@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -36,14 +37,22 @@ namespace DirectiveServer
         private bool isStart = false;
         private byte[] data = new byte[256];
 
-        private bool isRunning = false;
-        private bool isPausing = false;
-
-        private Timer runningTimer = null;
-        private Timer pausingTimer = null;
+        private ConcurrentDictionary<int, bool> isRunning = new ConcurrentDictionary<int, bool>();
+        private ConcurrentDictionary<int, bool> isPausing = new ConcurrentDictionary<int, bool>();
 
         public MainWindow()
         {
+
+            isRunning.TryAdd(1, false);
+            isRunning.TryAdd(2, false);
+            isRunning.TryAdd(3, false);
+            isRunning.TryAdd(4, false);
+
+            isPausing.TryAdd(1, false);
+            isPausing.TryAdd(2, false);
+            isPausing.TryAdd(3, false);
+            isPausing.TryAdd(4, false);
+
             InitializeComponent();
             txtPort.Text = port.ToString();
             this.Closed += MainWindow_Closed;
@@ -69,25 +78,32 @@ namespace DirectiveServer
             {
                 case 0x00:
                 {
-                    xdata = bytes;
-                    isRunning = true;
-                    runningTimer = new Timer(new TimerCallback((obj) =>
+                    var rate = DirectiveHelper.Parse2BytesToNumber(bytes.Skip(2).Take(2).ToArray());
+                    var volume = DirectiveHelper.Parse2BytesToNumber(bytes.Skip(4).Take(2).ToArray());
+                    xdata = resolveTryStartDirective(bytes);
+                    isRunning[bytes[0]] = true;
+                    Task.Run(async () =>
                     {
-                        isRunning = false;
-                        runningTimer.Dispose();
-                    }), null, 1000*30, 0);
+                        if((int)rate == 0)
+                            await Task.Delay(1000);
+                        else
+                        {
+                            await Task.Delay((int)((volume / rate) * 60 * 1000));
+                        }
+                        isRunning[bytes[0]] = false;
+                    });
                 }
                     break;
 
                 case 0x01:
                 {
-                        xdata = bytes;
-                        isPausing = true;
-                    pausingTimer = new Timer(new TimerCallback((obj) =>
+                    xdata = bytes;
+                    isPausing[bytes[0]] = true;
+                    Task.Run(async () =>
                     {
-                        isPausing = false;
-                        pausingTimer.Dispose();
-                    }), null, 1000*30, 0);
+                        await Task.Delay(1000*3);
+                        isPausing[bytes[0]] = false;
+                    });
                 }
                     break;
 
@@ -143,7 +159,7 @@ namespace DirectiveServer
         {
             var ids = GetDirectiveId(bytes);
             var rate = new byte[] {0x00, 0x00};
-            if (isRunning)
+            if (isRunning[bytes[0]])
             {
                 rate = new byte[]{0x00, 0x23,};
             }
@@ -156,7 +172,7 @@ namespace DirectiveServer
         {
             var ids = GetDirectiveId(bytes);
             var rate = new byte[] { 0x00, 0x00 };
-            if (isPausing)
+            if (isPausing[bytes[0]])
             {
                 rate = new byte[] { 0x00, 0x23, };
             }
@@ -165,6 +181,13 @@ namespace DirectiveServer
             return content.Concat(checkCode).ToArray();
         }
 
+        private byte[] resolveTryStartDirective(byte[] bytes)
+        {
+            var ids = GetDirectiveId(bytes);
+            var content = new byte[] {bytes[0], 0x00, ids[0], ids[1] };
+            var checkCode = DirectiveHelper.GenerateCheckCode(content);
+            return content.Concat(checkCode).ToArray();
+        }
         private string BytesToString(byte[] bytes)
         {
             var temp = "";
