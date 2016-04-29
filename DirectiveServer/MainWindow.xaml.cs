@@ -295,13 +295,7 @@ namespace DirectiveServer
 
         private void Test_OnClick(object sender, RoutedEventArgs e)
         {
-            WriteLog("hello world", "info");
-            WriteLog("hello world", "warning");
-            WriteLog("hello world", "error");
-            Action<string> x = (s) =>
-            {
-
-            };
+           
         }
 
         private void WriteLog(string msg, string level)
