@@ -40,10 +40,18 @@ namespace DirectiveServer
 
         private ConcurrentDictionary<int, bool> isRunning = new ConcurrentDictionary<int, bool>();
         private ConcurrentDictionary<int, bool> isPausing = new ConcurrentDictionary<int, bool>();
+        private Dictionary<int, int> DirectiveLength = new Dictionary<int, int>()
+        {
+            {0, 11 },
+            {1, 6 },
+            {2, 6 },
+            {3, 6 },
+            {4, 6 },
+            {5, 6 }
+        };
 
         public MainWindow()
         {
-
             isRunning.TryAdd(1, false);
             isRunning.TryAdd(2, false);
             isRunning.TryAdd(3, false);
@@ -68,16 +76,39 @@ namespace DirectiveServer
 
         private void Send(Socket socket, byte[] bytes)
         {
-            if(bytes.Length <= 2) return;
+//            if(!ValidateDirective(bytes)) return;
             try
             {
-                socket?.Send(ValidateDirective(bytes) ? processResolve(bytes) : new byte[] { 0xff, 0xff, 0xff, 0xff });
+                byte[] direct;
+                while ((direct = ResolveDirective(ref bytes)).Length > 0)
+                {
+                    if (ValidateDirective(direct))
+                        socket?.Send(processResolve(direct));
+                }
+                
             }
             catch (Exception)
             {
                 //
             }
             
+        }
+
+        private byte[] ResolveDirective(ref byte[] metaData)
+        {
+            byte[] ret;
+            if (metaData.Length <= 2)
+            {
+                ret = metaData;
+                metaData = new byte[] {};
+                return ret;
+            }
+
+            var count = DirectiveLength[metaData[1]];
+            ret = metaData.Take(count).ToArray();
+            metaData = metaData.Skip(count).Take(metaData.Length - count).ToArray();
+
+            return ret;
         }
 
         private bool ValidateDirective(byte[] bytes)
@@ -301,7 +332,6 @@ namespace DirectiveServer
                                     Dispatcher.Invoke(() =>
                                     {
                                         AddMsg(bytes.ToArray());
-                                        Thread.Sleep((int)(new Random().NextDouble() * 1000));
                                         Send(socket, bytes.ToArray());
                                     });
 
