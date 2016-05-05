@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -68,7 +69,26 @@ namespace DirectiveServer
         private void Send(Socket socket, byte[] bytes)
         {
             if(bytes.Length <= 2) return;
-            socket.Send(processResolve(bytes));
+            try
+            {
+                socket?.Send(ValidateDirective(bytes) ? processResolve(bytes) : new byte[] { 0xff, 0xff, 0xff, 0xff });
+            }
+            catch (Exception)
+            {
+                //
+            }
+            
+        }
+
+        private bool ValidateDirective(byte[] bytes)
+        {
+            if (bytes.Length <= 4) return false;
+
+            var content = bytes.Take(bytes.Length - 2).ToArray();
+            var checkCode = bytes.Skip(bytes.Length - 2).Take(2).ToArray();
+            var p = DirectiveHelper.GenerateCheckCode(content);
+
+            return p[0] == checkCode[0] && p[1] == checkCode[1];
         }
 
         private byte[] processResolve(byte[] bytes)
@@ -131,6 +151,13 @@ namespace DirectiveServer
 
                 default:
                     break;
+            }
+
+            if (new Random().NextDouble() > 0.9)
+            {
+                var list = xdata?.ToList();
+                list?.Add(0xff);
+                xdata = list?.ToArray();
             }
 
             return xdata;
@@ -274,6 +301,7 @@ namespace DirectiveServer
                                     Dispatcher.Invoke(() =>
                                     {
                                         AddMsg(bytes.ToArray());
+                                        Thread.Sleep((int)(new Random().NextDouble() * 1000));
                                         Send(socket, bytes.ToArray());
                                     });
 
@@ -296,17 +324,6 @@ namespace DirectiveServer
         private void Test_OnClick(object sender, RoutedEventArgs e)
         {
            
-        }
-
-        private void WriteLog(string msg, string level)
-        {
-            using (var file = File.Open("E:/log", FileMode.Append, FileAccess.Write))
-            {
-                using (var sw = new StreamWriter(file))
-                {
-                    sw.WriteLine($"[{DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff")} {level}] {msg}");
-                }
-            }
         }
 
     }
