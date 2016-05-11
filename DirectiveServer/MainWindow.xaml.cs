@@ -40,15 +40,7 @@ namespace DirectiveServer
 
         private ConcurrentDictionary<int, bool> isRunning = new ConcurrentDictionary<int, bool>();
         private ConcurrentDictionary<int, bool> isPausing = new ConcurrentDictionary<int, bool>();
-        private Dictionary<int, int> DirectiveLength = new Dictionary<int, int>()
-        {
-            {0, 11 },
-            {1, 6 },
-            {2, 6 },
-            {3, 6 },
-            {4, 6 },
-            {5, 6 }
-        };
+        private ConcurrentQueue<Tuple<Socket, byte[]>> WaitForSend = new ConcurrentQueue<Tuple<Socket, byte[]>>();
 
         public MainWindow()
         {
@@ -65,6 +57,20 @@ namespace DirectiveServer
             InitializeComponent();
             txtPort.Text = port.ToString();
             this.Closed += MainWindow_Closed;
+            Task.Run(async () =>
+            {
+                while (true)
+                {
+                    Tuple<Socket, byte[]> tuple = null;
+                    if (WaitForSend.TryDequeue(out tuple))
+                    {
+                        Send(tuple.Item1, tuple.Item2);
+                    }
+
+                    await Task.Delay(new Random().Next(600));
+                }
+
+            });
         }
 
         private void MainWindow_Closed(object sender, EventArgs e)
@@ -74,16 +80,31 @@ namespace DirectiveServer
             isStart = false;
         }
 
-        private void Send(Socket socket, byte[] bytes)
+        private async void Send(Socket socket, byte[] bytes)
         {
-//            if(!ValidateDirective(bytes)) return;
             try
             {
                 byte[] direct;
-                while ((direct = ResolveDirective(ref bytes)).Length > 0)
+                while ((direct = ResolveDirective(ref bytes)).Length > 0.9)
                 {
                     if (ValidateDirective(direct))
-                        socket?.Send(processResolve(direct));
+                    {
+                        if (new Random().NextDouble() > 0)
+                        {
+                            var ret = processResolve(direct);
+                            var pre = ret.Take(2).ToArray();
+                            var post = ret.Skip(2).Take(ret.Length - 2).ToArray();
+                            socket?.Send(pre);
+                            await Task.Delay(10);
+                            socket?.Send(post);
+                        }
+                        else
+                        {
+                            var ret = processResolve(direct);
+                            socket?.Send(ret);
+                        }
+                        
+                    }
                 }
                 
             }
@@ -104,7 +125,7 @@ namespace DirectiveServer
                 return ret;
             }
 
-            var count = DirectiveLength[metaData[1]];
+            var count = ((DirectiveTypeEnum)metaData[1]).GetDirectiveLength();
             ret = metaData.Take(count).ToArray();
             metaData = metaData.Skip(count).Take(metaData.Length - count).ToArray();
 
@@ -184,11 +205,9 @@ namespace DirectiveServer
                     break;
             }
 
-            if (new Random().NextDouble() > 0.9)
+            if (new Random().NextDouble() > 0.9 && xdata != null)
             {
-                var list = xdata?.ToList();
-                list?.Add(0xff);
-                xdata = list?.ToArray();
+                xdata[xdata.Length - 1] = 0xff;
             }
 
             return xdata;
@@ -198,16 +217,21 @@ namespace DirectiveServer
         {
             var len = bytes.Length;
             var ret = new byte[2];
-            ret[0] = bytes[len - 4];
-            ret[1] = bytes[len - 3];
+            ret[0] = bytes[len - 5];
+            ret[1] = bytes[len - 4];
 
             return ret;
+        }
+
+        private byte GetDeviceType(byte[] bytes)
+        {
+            return bytes[bytes.Length - 3];
         }
 
         private byte[] resolveIdleDirective(byte[] bytes)
         {
             var ids = GetDirectiveId(bytes);
-            var content = new byte[] { bytes[0], 0x03, 0x00, 0x00, ids[0], ids[1] };
+            var content = new byte[] { bytes[0], 0x03, 0x00, 0x00, ids[0], ids[1], GetDeviceType(bytes) };
             var checkCode = DirectiveHelper.GenerateCheckCode(content);
 
             return content.Concat(checkCode).ToArray();
@@ -221,7 +245,7 @@ namespace DirectiveServer
             {
                 rate = new byte[]{0x00, 0x23,};
             }
-            var content = new byte[] { bytes[0], 0x04, 0x00, 0x16, rate[0], rate[1], 0x00, 0x01, ids[0], ids[1] };
+            var content = new byte[] { bytes[0], 0x04, 0x00, 0x16, rate[0], rate[1], 0x00, 0x01, ids[0], ids[1], GetDeviceType(bytes) };
             var checkCode = DirectiveHelper.GenerateCheckCode(content);
             return content.Concat(checkCode).ToArray();
         }
@@ -234,7 +258,7 @@ namespace DirectiveServer
             {
                 rate = new byte[] { 0x00, 0x23, };
             }
-            var content = new byte[] { bytes[0], 0x05, 0x00, 0x12, rate[0], rate[1], 0x01, ids[0], ids[1] };
+            var content = new byte[] { bytes[0], 0x05, 0x00, 0x12, rate[0], rate[1], 0x01, ids[0], ids[1], GetDeviceType(bytes) };
             var checkCode = DirectiveHelper.GenerateCheckCode(content);
             return content.Concat(checkCode).ToArray();
         }
@@ -242,7 +266,7 @@ namespace DirectiveServer
         private byte[] resolveTryStartDirective(byte[] bytes)
         {
             var ids = GetDirectiveId(bytes);
-            var content = new byte[] {bytes[0], 0x00, ids[0], ids[1] };
+            var content = new byte[] {bytes[0], 0x00, ids[0], ids[1], GetDeviceType(bytes) };
             var checkCode = DirectiveHelper.GenerateCheckCode(content);
             return content.Concat(checkCode).ToArray();
         }
@@ -329,20 +353,19 @@ namespace DirectiveServer
                                 //判断是否还有数据流需要接受
                                 if (socket.Available == 0)
                                 {
+                                    var temp = bytes.ToArray();
+                                    bytes.Clear();
+                                    WaitForSend.Enqueue(new Tuple<Socket, byte[]>(socket, temp));
                                     Dispatcher.Invoke(() =>
                                     {
-                                        AddMsg(bytes.ToArray());
-                                        Send(socket, bytes.ToArray());
+                                        AddMsg(temp);
                                     });
-
-                                    bytes.Clear();
                                 }
                             }
                             catch (Exception)
                             {
                                 //ignore
                             }
-
                         }
 
                     }).Start();
