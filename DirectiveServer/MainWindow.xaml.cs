@@ -89,9 +89,10 @@ namespace DirectiveServer
                 {
                     if (ValidateDirective(direct))
                     {
-                        if (new Random().NextDouble() > 0.9)
+                        var ret = processResolve(direct);
+
+                        if (new Random().NextDouble() <0.1)
                         {
-                            var ret = processResolve(direct);
                             var pre = ret.Take(2).ToArray();
                             var post = ret.Skip(2).Take(ret.Length - 2).ToArray();
                             socket?.Send(pre);
@@ -100,7 +101,6 @@ namespace DirectiveServer
                         }
                         else
                         {
-                            var ret = processResolve(direct);
                             socket?.Send(ret);
                         }
                         
