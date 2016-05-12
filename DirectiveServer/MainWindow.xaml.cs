@@ -85,11 +85,11 @@ namespace DirectiveServer
             try
             {
                 byte[] direct;
-                while ((direct = ResolveDirective(ref bytes)).Length > 0.9)
+                while ((direct = ResolveDirective(ref bytes)).Length > 0)
                 {
                     if (ValidateDirective(direct))
                     {
-                        if (new Random().NextDouble() > 0)
+                        if (new Random().NextDouble() > 0.9)
                         {
                             var ret = processResolve(direct);
                             var pre = ret.Take(2).ToArray();
@@ -173,7 +173,7 @@ namespace DirectiveServer
                     isPausing[bytes[0]] = true;
                     Task.Run(async () =>
                     {
-                        await Task.Delay(1000*3);
+                        await Task.Delay(1000);
                         isPausing[bytes[0]] = false;
                     });
                 }
