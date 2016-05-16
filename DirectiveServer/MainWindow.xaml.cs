@@ -37,10 +37,12 @@ namespace DirectiveServer
         private int port = 8080;
         private bool isStart = false;
         private byte[] data = new byte[256];
+        private double MULTI_PERCENT = 0.0;
+        private double BAD_PERCENT = 0.0;
+        private int MAX_INTERVAL = 0;
 
         private ConcurrentDictionary<int, bool> isRunning = new ConcurrentDictionary<int, bool>();
         private ConcurrentDictionary<int, bool> isPausing = new ConcurrentDictionary<int, bool>();
-        private ConcurrentQueue<Tuple<Socket, byte[]>> WaitForSend = new ConcurrentQueue<Tuple<Socket, byte[]>>();
 
         public MainWindow()
         {
@@ -57,20 +59,6 @@ namespace DirectiveServer
             InitializeComponent();
             txtPort.Text = port.ToString();
             this.Closed += MainWindow_Closed;
-            Task.Run(async () =>
-            {
-                while (true)
-                {
-                    Tuple<Socket, byte[]> tuple = null;
-                    if (WaitForSend.TryDequeue(out tuple))
-                    {
-                        Send(tuple.Item1, tuple.Item2);
-                    }
-
-                    await Task.Delay(new Random().Next(600));
-                }
-
-            });
         }
 
         private void MainWindow_Closed(object sender, EventArgs e)
@@ -80,7 +68,7 @@ namespace DirectiveServer
             isStart = false;
         }
 
-        private async void Send(Socket socket, byte[] bytes)
+        private void Send(Socket socket, byte[] bytes)
         {
             try
             {
@@ -91,28 +79,27 @@ namespace DirectiveServer
                     {
                         var ret = processResolve(direct);
 
-                        if (new Random().NextDouble() <0.1)
+                        if (new Random().NextDouble() < MULTI_PERCENT)
                         {
                             var pre = ret.Take(2).ToArray();
                             var post = ret.Skip(2).Take(ret.Length - 2).ToArray();
                             socket?.Send(pre);
-                            await Task.Delay(10);
+//                            Thread.Sleep(10);
                             socket?.Send(post);
                         }
                         else
                         {
                             socket?.Send(ret);
                         }
-                        
+
+//                        Thread.Sleep(new Random().Next(MAX_INTERVAL) + 10);
                     }
                 }
-                
             }
             catch (Exception)
             {
                 //
             }
-            
         }
 
         private byte[] ResolveDirective(ref byte[] metaData)
@@ -205,7 +192,7 @@ namespace DirectiveServer
                     break;
             }
 
-            if (new Random().NextDouble() > 0.9 && xdata != null)
+            if (new Random().NextDouble() < BAD_PERCENT && xdata != null)
             {
                 xdata[xdata.Length - 1] = 0xff;
             }
@@ -309,9 +296,13 @@ namespace DirectiveServer
 
         public void RenderMsg(string msg, Brush color)
         {
-            var tb = new TextBlock { Text = msg, Foreground = color };
-            spMsg.Items.Add(tb);
-            spMsg.ScrollIntoView(spMsg.Items[spMsg.Items.Count - 1]);
+            Dispatcher.Invoke(() =>
+            {
+                var tb = new TextBlock { Text = msg, Foreground = color };
+                spMsg.Items.Add(tb);
+                spMsg.ScrollIntoView(spMsg.Items[spMsg.Items.Count - 1]);
+            });
+           
         }
 
         private void Button_Click(object sender, RoutedEventArgs e)
@@ -333,11 +324,11 @@ namespace DirectiveServer
                 {
                     Socket socket = server.Accept();
                     Debug.WriteLine("客户端连接........");
-                    var bytes = new List<byte>();
 
                     //接受一个新的客户端 开启新线程
                     new Thread(() =>
                     {
+                        var bytes = new List<byte>();
                         //持续接受客户端信息
                         while (true)
                         {
@@ -355,11 +346,8 @@ namespace DirectiveServer
                                 {
                                     var temp = bytes.ToArray();
                                     bytes.Clear();
-                                    WaitForSend.Enqueue(new Tuple<Socket, byte[]>(socket, temp));
-                                    Dispatcher.Invoke(() =>
-                                    {
-                                        AddMsg(temp);
-                                    });
+                                    Send(socket, temp);
+                                    AddMsg(temp);
                                 }
                             }
                             catch (Exception)

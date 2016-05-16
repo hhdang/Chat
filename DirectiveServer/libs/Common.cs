@@ -10,14 +10,7 @@ namespace DirectiveServer.libs
     {
         public static string BytesToString(byte[] bytes)
         {
-            var str = "";
-
-            for (var i = 0; i < bytes.Length; i++)
-            {
-                str += Convert.ToString(bytes[i], 16).PadLeft(2, '0') + ",";
-            }
-
-            return str;
+            return bytes.Aggregate("", (current, t) => current + (Convert.ToString(t, 16).PadLeft(2, '0') + ","));
         }
     }
 }

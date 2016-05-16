@@ -18,7 +18,7 @@
                       Height="391"
                       Margin="0,112,0,0"
                       VerticalAlignment="Top" 
-                      Width="477">
+                      Width="800">
             <ListView x:Name="spMsg">
             </ListView>
         </Border>
